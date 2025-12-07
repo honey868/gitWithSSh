@@ -1,0 +1,81 @@
+-----------------Bill Header -------------------------------------
+
+select * from works.blm_txn_basic_info_details btbid where bill_no=?1
+
+------------------------ SUPERVISION AMOUNT ----------------------------------
+
+select  cast(coalesce(round(sum(actual_amount)),0) as text) from
+works.blm_txn_memorandum_of_payment btmop where bill_no=?1 and items_type in ('52','51')
+
+----------------Cost distribution ------------------
+select a.cost_distribution_seq_id as id,cast(a.previous_bill_amount as text) as previousBillAmount,cast(a.cost_dist_amount as text) as costDistAmount,cast(a.cumulative_amount as text) as cumulativeAmount,
+    a.admin_sancation_id as asNo, b.name_of_work as asWorkName, cast(a.admin_sancation_amount as text) as sanctionAmount,a.technical_sanction_id as techSanNo,
+    c.work_name as tsWorkName, cast(a.technical_sanction_amount as text) as tsSectionAmount, a.pick_code as pickCode,cast(d.agreement_amount as text)  as agreementAmount ,
+    cast(d.gross_amount as text) as grossAmount,cast(d.total_deduction as text) as totalDeduction ,cast(d.net_amount as text) as netAmount 
+    from works.blm_txn_cost_distribution a
+    join works.wms_administrative_sanction b on b.as_no = a.admin_sancation_id
+    join works.wms_technical_sanction_header c on c.tech_san_no= a.technical_sanction_id
+    join  works.blm_txn_basic_info_details  d on a.bill_seq_id = d.seq_id
+    where bill_seq_id =?1
+   
+    
+    
+------------------ beneficiary ------------------    
+    
+select beneficiary_id as beneficiaryId , name as name, pan_no as panNo, aadhar_no as aadharNo , ifsc_code as ifscCode ,
+ bank_account_no as bankAccountNo  , cast( gross_amount as text) as grossAmount,cast(deductions as text) as deductions ,cast(net_amount as text) as netAmount
+ from works.blm_txn_beneficiary_details where bill_seq_id=?1 order by beneficiary_id
+ -----------------Invoice ---------------------------
+ select invoice_order_number as invcNum,cast(invoice_order_amount as text) as invcAmount ,Cast(to_char(invoice_order_date,'YYYYMMDD') as text)
+ as invcDate from works.blm_txn_invoice_details where bill_no=?1 
+ 
+ 
+ -----------Mbook Details ---------------------------
+ -----------------BOQ ---------------------
+ select '3' as chckMAuth,cast(mbook_id as text) as mBookNo,
+cast(mbook_page_id as text) as pageNo ,
+cast(billing_amount as text) as amount,Cast(to_char(ee.approver_measurementdate,'YYYYMMDD') as text)  as checkMstDate
+from works.blm_txn_mbook_specs a
+join 
+(select id,approver_measurementdate from works.wms_mbook_migration_sub where approver_measurementdate is not null)ee
+on a.mbook_sub_id=ee.id
+where bill_no=?1 
+union all
+select '4' as chckMAuth,cast(mbook_id as text) as mBookNo,
+cast(mbook_page_id as text) as pageNo ,
+cast(billing_amount as text) as amount,Cast(to_char(se.se_measurementdate,'YYYYMMDD') as text)
+from works.blm_txn_mbook_specs a
+join 
+(select id,se_measurementdate from works.wms_mbook_migration_sub where se_measurementdate is not null)se
+on a.mbook_sub_id=se.id
+where bill_no=?1 
+
+-------------------ECP ---------------------------
+select distinct '3' as chckMAuth,cast(a.mbook_id as text) as mBookNo,
+cast(a.mbook_page_id as text) as pageNo ,
+cast(a.billing_amount as text) as amount,
+Cast(to_char(c.approver_measurementdate,'YYYYMMDD') as text)  as checkMstDate 
+from works.blm_txn_mbook_specs a
+join works.wms_mbook_epc_agg_spec b on a.epc_agg_spec_id = b.mbook_epc_agg_spec_id 
+and a.mbook_id= b.mbook_id and a.mbook_page_id= b.mbook_pageid
+join works.wms_mbook_migration_sub c on c.mbook_id=b.mbook_id and c.mbook_page_id = b.mbook_pageid
+and c.epc_agg_spec_id = b.mbook_epc_agg_spec_id
+where c.approver_measurementdate is not null and 
+a.bill_no=?1 
+union all
+select distinct '4' as chckMAuth,cast(a.mbook_id as text) as mBookNo,
+cast(a.mbook_page_id as text) as pageNo ,
+cast(a.billing_amount as text) as amount,
+Cast(to_char(c.approver_measurementdate,'YYYYMMDD') as text)  as checkMstDate 
+from works.blm_txn_mbook_specs a
+join works.wms_mbook_epc_agg_spec b on a.epc_agg_spec_id = b.mbook_epc_agg_spec_id 
+and a.mbook_id= b.mbook_id and a.mbook_page_id= b.mbook_pageid
+join works.wms_mbook_migration_sub c on c.mbook_id=b.mbook_id and c.mbook_page_id = b.mbook_pageid
+and c.epc_agg_spec_id = b.mbook_epc_agg_spec_id
+where c.se_measurementdate is not null and 
+a.bill_no=?1 
+
+----------------------Deductions ----------------------------
+
+select b.ded_map_id as mapId ,hoa as dedHoa ,actual_amount as dedAmount ,gstin as gstn ,b.subgroup_name as desc, benficiary_id as beneficiaryId from works.blm_txn_memorandum_of_payment a join works.wms_mst_blm_mop b on a.items_type=b.subgroup_id
+where b.group_code=6 and a.bill_no=?1 and actual_amount > 0
